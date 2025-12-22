@@ -1,21 +1,27 @@
-from fastapi import FastAPI, File, UploadFile,APIRouter, HTTPException
+from fastapi import FastAPI, File, UploadFile, APIRouter, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import os
-import openai
+from openai import OpenAI
 from PIL import Image
 import io
+import base64
 
 # Load env
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-openai.api_key = OPENAI_API_KEY
+
+if not OPENAI_API_KEY:
+    raise RuntimeError("OPENAI_API_KEY not found in environment")
+
+client = OpenAI(api_key=OPENAI_API_KEY)
 
 router = APIRouter(prefix="/plant", tags=["Plant"])
 
-# Analyze plant endpoint
 @router.post("/analyze")
 async def analyze_plant(file: UploadFile = File(...)):
+
+    print("Received file:", file.filename, file.content_type)
     contents = await file.read()
 
     if not contents or len(contents) < 1000:
@@ -23,39 +29,51 @@ async def analyze_plant(file: UploadFile = File(...)):
 
     try:
         image = Image.open(io.BytesIO(contents))
-        image.verify()  # verifies integrity
+        image.verify()
     except Exception:
         raise HTTPException(status_code=400, detail="Uploaded file is not a valid image")
 
-    # reopen after verify
+    # Reopen image after verify
     image = Image.open(io.BytesIO(contents))
-
-    import base64
     buffered = io.BytesIO()
     image.save(buffered, format="JPEG")
-    img_str = base64.b64encode(buffered.getvalue()).decode()
+
+    img_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
 
     try:
-        response = openai.ChatCompletion.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": "You are a plant disease expert."},
+        response = client.responses.create(
+            model="gpt-4.1-mini",
+            input=[
+                {
+                    "role": "system",
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": (
+                                "You are an agricultural disease detection API. "
+                                "Respond ONLY with valid JSON. "
+                                "Keys: disease_name, confidence, symptoms, "
+                                "organic_treatment, chemical_treatment, prevention."
+                            )
+                        }
+                    ]
+                },
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": "Identify disease and treatment"},
+                        {"type": "input_text", "text": "Identify the plant disease"},
                         {
-                            "type": "image_url",
-                            "image_url": f"data:image/jpeg;base64,{img_str}"
+                            "type": "input_image",
+                            "image_url": f"data:image/jpeg;base64,{img_base64}"
                         }
                     ]
                 }
-            ],
-            temperature=0
+            ]
         )
 
-        return {"disease": response.choices[0].message.content}
+
+        result = response.output_text
+        return result
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-

@@ -1,0 +1,8 @@
+dotenv
+fastapi
+uvicorn
+pydantic
+python-multipart
+openai
+pillow
+twilio

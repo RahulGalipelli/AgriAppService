@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "expo-image-manipulator": "^14.0.8"
+  }
+}
