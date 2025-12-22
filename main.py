@@ -1,9 +1,11 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from random import randint
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from twilio.rest import Client
+from plant import router as plant_analysis_router
 import os
 
 # Load environment variables from .env
@@ -18,6 +20,13 @@ TWILIO_VERIFY_SERVICE_SID = os.getenv("TWILIO_VERIFY_SERVICE_SID")
 client = Client(TWILIO_SID, TWILIO_AUTH_TOKEN)
 
 app = FastAPI(title="OTP Login API")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+app.include_router(plant_analysis_router)
 
 # In-memory OTP store (for production use Redis or DB)
 otp_store = {}
