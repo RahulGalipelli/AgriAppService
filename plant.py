@@ -51,7 +51,7 @@ async def analyze_plant(file: UploadFile = File(...)):
                             "type": "input_text",
                             "text": (
                                 "You are an agricultural disease detection API. "
-                                "Respond ONLY with valid JSON. "
+                                "Respond ONLY with raw JSON. Do not include markdown, text, or explanations."
                                 "Keys: disease_name, confidence, symptoms, "
                                 "organic_treatment, chemical_treatment, prevention."
                             )
@@ -70,7 +70,7 @@ async def analyze_plant(file: UploadFile = File(...)):
                 }
             ]
         )
-
+        print(response)
 
         result = response.output_text
         return result
