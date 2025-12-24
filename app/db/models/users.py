@@ -1,3 +1,11 @@
+from uuid import uuid4
+from sqlalchemy import String, DateTime, ForeignKey, Boolean
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import mapped_column
+from app.db.base import Base
+from sqlalchemy.sql import func
+
+
 class User(Base):
     __tablename__ = "users"
 

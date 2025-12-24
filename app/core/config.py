@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     TWILIO_PHONE: str
     TWILIO_VERIFY_SERVICE_SID: str
 
+    #Security
+    SECRET_KEY: str
+
     # OpenAI
     OPENAI_API_KEY: str
 

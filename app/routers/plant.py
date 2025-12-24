@@ -8,6 +8,13 @@ import base64
 
 # Load env
 from app.core.config import get_settings
+from fastapi import Depends
+from app.core.security import get_current_user_id
+from app.db.models import PlantScan
+from app.db.models import ScanResult
+from app.db.session import async_session
+from fastapi import APIRouter
+
 
 settings = get_settings()
 import logging
@@ -22,8 +29,9 @@ if not settings.OPENAI_API_KEY:
 client = OpenAI(api_key=settings.OPENAI_API_KEY)
 router = APIRouter(prefix="/plant", tags=["Plant"])
 
+
 @router.post("/analyze")
-async def analyze_plant(file: UploadFile = File(...)):
+async def analyze_plant(file: UploadFile = File(...), user_id: str = Depends(get_current_user_id)):
 
     print("Received file:", file.filename, file.content_type)
     contents = await file.read()
@@ -74,9 +82,28 @@ async def analyze_plant(file: UploadFile = File(...)):
                 }
             ]
         )
-
         result = response.output_text
-        return result
-
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+    async with async_session() as session:
+        scan = PlantScan(user_id=user_id, image_filename=file.filename)
+        session.add(scan)
+        await session.commit()
+        await session.refresh(scan)
+        
+        # Save the JSON response
+        scan_result = ScanResult(scan_id=scan.id, result_json=result)
+        session.add(scan_result)
+        await session.commit()
+
+    import json
+
+    try:
+        parsed_result = json.loads(result)
+    except Exception:
+        parsed_result = {"raw": result}
+
+    return {"scan_id": str(scan.id), "result": parsed_result}
+
+
