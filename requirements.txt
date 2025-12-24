@@ -2,7 +2,12 @@ dotenv
 fastapi
 uvicorn
 pydantic
+pydantic_settings
 python-multipart
 openai
 pillow
 twilio
+sqlalchemy
+asyncpg
+alembic
+psycopg2-binary

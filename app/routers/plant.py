@@ -1,6 +1,5 @@
 from fastapi import FastAPI, File, UploadFile, APIRouter, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from dotenv import load_dotenv
 import os
 from openai import OpenAI
 from PIL import Image
@@ -8,14 +7,19 @@ import io
 import base64
 
 # Load env
-load_dotenv()
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+from app.core.config import get_settings
 
-if not OPENAI_API_KEY:
+settings = get_settings()
+import logging
+
+logger = logging.getLogger(__name__)
+
+logger.info("Analyzing plant image")
+
+if not settings.OPENAI_API_KEY:
     raise RuntimeError("OPENAI_API_KEY not found in environment")
 
-client = OpenAI(api_key=OPENAI_API_KEY)
-
+client = OpenAI(api_key=settings.OPENAI_API_KEY)
 router = APIRouter(prefix="/plant", tags=["Plant"])
 
 @router.post("/analyze")
@@ -70,7 +74,6 @@ async def analyze_plant(file: UploadFile = File(...)):
                 }
             ]
         )
-        print(response)
 
         result = response.output_text
         return result
