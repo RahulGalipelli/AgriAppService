@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.future import select
+from sqlalchemy.exc import IntegrityError
 from app.db.session import async_session
 from app.db.models.carts import Cart
 from app.db.models.cart_items import CartItem
@@ -114,17 +115,37 @@ async def add_to_cart(item: CartItemRequest, user_id: str = Depends(get_current_
         cart_item = item_result.scalar_one_or_none()
 
         if cart_item:
+            # Update existing item quantity
             cart_item.quantity = max(0, cart_item.quantity + item.quantity)
             if cart_item.quantity <= 0:
                 await session.delete(cart_item)
         else:
+            # Only create new item if quantity > 0
             if item.quantity > 0:
+                # Use merge to handle potential race conditions
                 cart_item = CartItem(
                     cart_id=cart.id,
                     product_id=UUID(item.product_id),
                     quantity=max(1, item.quantity)
                 )
-                session.add(cart_item)
+                # Check again before adding to avoid race condition
+                try:
+                    session.add(cart_item)
+                    await session.flush()  # Flush to catch any constraint violations early
+                except IntegrityError:
+                    # If item was added by another request, fetch and update it
+                    await session.rollback()
+                    item_result = await session.execute(
+                        select(CartItem).where(
+                            CartItem.cart_id == cart.id,
+                            CartItem.product_id == UUID(item.product_id)
+                        )
+                    )
+                    cart_item = item_result.scalar_one_or_none()
+                    if cart_item:
+                        cart_item.quantity = max(0, cart_item.quantity + item.quantity)
+                    else:
+                        raise HTTPException(status_code=500, detail="Failed to add item to cart")
 
         await session.commit()
 

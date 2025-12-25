@@ -5,6 +5,8 @@ pydantic
 pydantic_settings
 python-multipart
 openai
+imagehash
+Pillow
 pillow
 twilio
 sqlalchemy
@@ -12,3 +14,4 @@ asyncpg
 alembic
 psycopg2-binary
 python-jose[cryptography]
+passlib[bcrypt]

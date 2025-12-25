@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from datetime import datetime, timedelta
-from uuid import uuid4
+from uuid import uuid4, UUID
 from collections import defaultdict
 import logging
 from twilio.rest import Client
@@ -13,13 +13,14 @@ from sqlalchemy.future import select
 from app.core.logging import setup_logging
 from app.core.request_id import RequestIDMiddleware
 from app.core.config import get_settings
-from app.core.security import create_access_token, decode_access_token
+from app.core.security import create_access_token, decode_access_token, get_current_user_id
 from app.db.models.users import User
 from app.db.models.user_sessions import UserSession
 from app.routers.plant import router as plant_router
 from app.routers.products import router as products_router
 from app.routers.cart import router as cart_router
 from app.routers.orders import router as orders_router
+from app.routers.admin import router as admin_router
 from app.db.session import engine
 from app.db.base import Base
 
@@ -45,7 +46,8 @@ app.add_middleware(
 app.include_router(plant_router)
 app.include_router(products_router)
 app.include_router(cart_router)
-app.include_router(orders_router) 
+app.include_router(orders_router)
+app.include_router(admin_router) 
 # --- RATE LIMIT STORAGE (in-memory, replace with Redis for prod) ---
 otp_request_counts = defaultdict(list)
 OTP_LIMIT = 3  # Max 3 requests per hour
@@ -169,6 +171,37 @@ async def logout(request: RefreshTokenRequest):
             await session.delete(session_obj)
             await session.commit()
     return {"success": True, "message": "Logged out successfully"}
+
+class UpdateUserRequest(BaseModel):
+    language: str | None = None
+    name: str | None = None
+
+@app.put("/auth/user")
+async def update_user(
+    request: UpdateUserRequest,
+    user_id: str = Depends(get_current_user_id)
+):
+    async with async_session() as session:
+        result = await session.execute(select(User).where(User.id == UUID(user_id)))
+        user: User | None = result.scalar_one_or_none()
+        
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        if request.language is not None:
+            user.language = request.language
+        if request.name is not None:
+            user.name = request.name
+        
+        await session.commit()
+        await session.refresh(user)
+        
+        return {
+            "id": str(user.id),
+            "phone": user.phone,
+            "name": user.name,
+            "language": user.language
+        }
 
 # --- STARTUP / SHUTDOWN ---
 @app.on_event("startup")

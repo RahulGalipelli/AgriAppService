@@ -3,6 +3,8 @@ Improved Plant Analysis Router with Hybrid AI System
 Implements: Image hashing, consensus analysis, product matching
 """
 from fastapi import APIRouter, File, UploadFile, HTTPException, Depends
+from fastapi.middleware.cors import CORSMiddleware
+import os
 from PIL import Image
 import io
 import base64
@@ -17,6 +19,7 @@ from app.services.image_hash_service import ImageHashService
 from app.services.consensus_analyzer import ConsensusAnalyzer
 from app.services.product_matcher import ProductMatcher
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -61,16 +64,14 @@ async def analyze_plant(
     async with async_session() as session:
         # Step 1: Generate image hashes
         try:
-            phash, avg_hash = image_hash_service.generate_hash(contents)
+            phash, dct_hash = image_hash_service.generate_hash(contents)
             md5_hash = image_hash_service.generate_md5(contents)
         except Exception as e:
             logger.error(f"Failed to generate image hash: {str(e)}")
-            phash = avg_hash = md5_hash = None
+            phash = dct_hash = md5_hash = None
 
         # Step 2: Check for duplicate/similar images
         similar_scan = None
-        similar_result = None
-        
         if md5_hash:
             # Check for exact duplicate (MD5)
             query = select(PlantScan).where(PlantScan.image_hash_md5 == md5_hash)
@@ -98,7 +99,7 @@ async def analyze_plant(
         if phash:
             query = select(PlantScan).where(
                 PlantScan.image_hash_phash.isnot(None)
-            ).order_by(PlantScan.created_at.desc()).limit(100)  # Check recent scans for performance
+            ).limit(100)  # Check recent scans for performance
             
             result = await session.execute(query)
             recent_scans = result.scalars().all()
@@ -121,12 +122,11 @@ async def analyze_plant(
                     ScanResult.scan_id == best_match.id
                 )
                 result_result = await session.execute(result_query)
-                similar_result_obj = result_result.scalar_one_or_none()
+                similar_result = result_result.scalar_one_or_none()
                 
-                if similar_result_obj:
+                if similar_result:
                     logger.info(f"Found similar scan: {best_match.id} (similarity: {best_similarity:.2f})")
                     similar_scan = best_match
-                    similar_result = similar_result_obj
 
         # Step 3: Run consensus-based AI analysis (if no similar match found)
         if not similar_scan:
@@ -166,7 +166,7 @@ async def analyze_plant(
             user_id=user_id,
             image_filename=file.filename,
             image_hash_phash=phash,
-            image_hash_dct=avg_hash,  # Using avg_hash instead of dct_hash
+            image_hash_dct=dct_hash,
             image_hash_md5=md5_hash,
             is_duplicate=similar_scan is not None,
             original_scan_id=similar_scan.id if similar_scan else None
@@ -197,5 +197,4 @@ async def analyze_plant(
         "is_duplicate": similar_scan is not None,
         "has_products": has_products
     }
-
 
