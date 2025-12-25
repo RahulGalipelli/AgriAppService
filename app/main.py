@@ -17,6 +17,9 @@ from app.core.security import create_access_token, decode_access_token
 from app.db.models.users import User
 from app.db.models.user_sessions import UserSession
 from app.routers.plant import router as plant_router
+from app.routers.products import router as products_router
+from app.routers.cart import router as cart_router
+from app.routers.orders import router as orders_router
 from app.db.session import engine
 from app.db.base import Base
 
@@ -39,7 +42,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.include_router(plant_router) 
+app.include_router(plant_router)
+app.include_router(products_router)
+app.include_router(cart_router)
+app.include_router(orders_router) 
 # --- RATE LIMIT STORAGE (in-memory, replace with Redis for prod) ---
 otp_request_counts = defaultdict(list)
 OTP_LIMIT = 3  # Max 3 requests per hour

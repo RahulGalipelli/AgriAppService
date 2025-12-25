@@ -1,3 +1,8 @@
+from sqlalchemy import ForeignKey, Integer
+from sqlalchemy.orm import mapped_column
+from app.db.base import Base
+
+
 class CartItem(Base):
     __tablename__ = "cart_items"
 

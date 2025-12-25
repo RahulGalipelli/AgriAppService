@@ -1,3 +1,8 @@
+from sqlalchemy import ForeignKey, Integer, Numeric
+from sqlalchemy.orm import mapped_column
+from app.db.base import Base
+
+
 class OrderItem(Base):
     __tablename__ = "order_items"
 

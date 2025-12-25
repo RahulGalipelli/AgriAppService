@@ -1,3 +1,8 @@
+from sqlalchemy import ForeignKey, Integer
+from sqlalchemy.orm import mapped_column
+from app.db.base import Base
+
+
 class ScanProductRecommendation(Base):
     __tablename__ = "scan_product_recommendations"
 

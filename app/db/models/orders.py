@@ -1,3 +1,11 @@
+from uuid import uuid4
+from sqlalchemy import String, DateTime, ForeignKey, Numeric
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import mapped_column
+from sqlalchemy.sql import func
+from app.db.base import Base
+
+
 class Order(Base):
     __tablename__ = "orders"
 
@@ -5,4 +13,5 @@ class Order(Base):
     user_id = mapped_column(ForeignKey("users.id"))
     status = mapped_column(String(30))  # placed, shipped, delivered
     total_amount = mapped_column(Numeric(10,2))
+    address = mapped_column(String(500), nullable=True)  # Delivery address
     created_at = mapped_column(DateTime, default=func.now())

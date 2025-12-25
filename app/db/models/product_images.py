@@ -1,3 +1,10 @@
+from uuid import uuid4
+from sqlalchemy import ForeignKey, Text
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import mapped_column
+from app.db.base import Base
+
+
 class ProductImage(Base):
     __tablename__ = "product_images"
 

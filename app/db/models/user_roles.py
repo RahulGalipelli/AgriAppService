@@ -1,3 +1,10 @@
+from uuid import uuid4
+from sqlalchemy import String, ForeignKey
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import mapped_column
+from app.db.base import Base
+
+
 class UserRole(Base):
     __tablename__ = "user_roles"
 
