@@ -260,9 +260,14 @@ async def update_user(
 # --- STARTUP / SHUTDOWN ---
 @app.on_event("startup")
 async def startup():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    logger.info("API started")
+    # Only create tables automatically in local development
+    # In production, use Alembic migrations instead
+    if settings.ENV == "local" or settings.DEBUG:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        logger.info("Tables created/verified (local dev mode)")
+    else:
+        logger.info("API started (production mode - using Alembic migrations)")
 
 @app.on_event("shutdown")
 async def shutdown():

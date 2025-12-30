@@ -28,6 +28,7 @@
 3. Click **"Create Database"**
 4. Wait for it to provision (~2 minutes)
 5. **Copy the Internal Database URL** (you'll need this)
+   postgresql://agriapp_user:0RS8WBUF21eeb9ef4N8iGGy4xh3wsFRh@dpg-d59pqg3e5dus73emb6m0-a/agriapp_6swx
 
 ## Step 4: Create Web Service
 
@@ -40,9 +41,11 @@
    - **Region:** Same as database
    - **Branch:** `main` (or your default branch)
    - **Root Directory:** (leave empty)
-   - **Build Command:** `pip install -r requirements.txt`
+   - **Build Command:** `pip install -r requirements.txt && alembic upgrade head`
    - **Start Command:** `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
    - **Plan:** Free
+   
+   > **💡 Tip:** The build command includes `alembic upgrade head` to automatically run migrations. This works on the free tier and means you can skip Step 5!
 5. Click **"Advanced"** and add environment variables:
 
 ### Environment Variables:
@@ -69,13 +72,29 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 
 ## Step 5: Run Database Migrations
 
+### ✅ If you used the build command from Step 4:
+**You can skip this step!** Migrations will run automatically during deployment. Just wait for the build to complete (~3-5 minutes) and check the logs to confirm migrations ran.
+
+---
+
+### 🔧 Alternative: Manual Migration (If needed)
+
+If you didn't include migrations in the build command, or if you need to run them manually:
+
 1. Wait for first deployment to complete (~3-5 minutes)
-2. Go to your web service → **"Shell"** tab
-3. Run:
+2. Go to your web service dashboard
+3. Look for **"Shell"** tab (available on free tier - may be in the top menu or sidebar)
+4. Click **"Open Shell"** or **"Connect"**
+5. Once connected, run:
    ```bash
    alembic upgrade head
    ```
-4. You should see: `INFO  [alembic.runtime.migration] Running upgrade ...`
+6. You should see: `INFO  [alembic.runtime.migration] Running upgrade ...`
+
+**Note:** 
+- The Shell tab is available on Render's free tier
+- If you don't see it, try refreshing the page or check the "Settings" → "Shell" section
+- Sometimes it takes a moment to appear after the first deployment
 
 ## Step 6: Test Your API
 
@@ -113,10 +132,11 @@ Your backend is now live and accessible from anywhere!
 - Verify Python version in `runtime.txt` (3.11)
 - Check build logs in Render dashboard
 
-### Migrations Fail
-- Ensure database is fully provisioned (green status)
-- Check `DATABASE_URL` format is correct
-- Try running migrations again in Shell
+### Migrations Fail - "relation already exists"
+- **This is fixed!** The migration now checks if tables exist before creating them
+- If you still see this error, it means you're using an old migration file
+- **Solution:** Pull the latest code with the updated migration, or manually delete the database and recreate it
+- The app no longer auto-creates tables in production (only in local dev)
 
 ### CORS Errors
 - Update `app/main.py` to allow your frontend domain:
