@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
+from typing import Optional
 
 
 class Settings(BaseSettings):
@@ -8,16 +9,27 @@ class Settings(BaseSettings):
     ENV: str = "local"
     DEBUG: bool = True
 
-    # Database
-    POSTGRES_USER: str
-    POSTGRES_PASSWORD: str
+    # Database - Support both DATABASE_URL (cloud) and individual vars (local)
+    DATABASE_URL: Optional[str] = None  # Cloud providers use this
+    POSTGRES_USER: Optional[str] = None
+    POSTGRES_PASSWORD: Optional[str] = None
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
-    POSTGRES_DB: str
+    POSTGRES_DB: Optional[str] = None
 
     @property
     def database_url(self) -> str:
-        # ASYNC (FastAPI runtime)
+        # If DATABASE_URL is provided (cloud), use it directly
+        if self.DATABASE_URL:
+            # Convert to asyncpg format if needed
+            if "postgresql://" in self.DATABASE_URL and "+asyncpg" not in self.DATABASE_URL:
+                return self.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
+            return self.DATABASE_URL
+        
+        # Otherwise, build from individual vars (local development)
+        if not all([self.POSTGRES_USER, self.POSTGRES_PASSWORD, self.POSTGRES_DB]):
+            raise ValueError("Either DATABASE_URL or all POSTGRES_* variables must be set")
+        
         return (
             f"postgresql+asyncpg://{self.POSTGRES_USER}:"
             f"{self.POSTGRES_PASSWORD}@"
@@ -28,8 +40,13 @@ class Settings(BaseSettings):
 
     @property
     def database_url_sync(self) -> str:
-        # SYNC (Alembic only)
-        return self.database_url.replace("+asyncpg", "+psycopg2")
+        # SYNC (Alembic only) - convert asyncpg to psycopg2
+        url = self.database_url
+        if "+asyncpg" in url:
+            return url.replace("+asyncpg", "+psycopg2")
+        elif "postgresql://" in url and "+" not in url:
+            return url.replace("postgresql://", "postgresql+psycopg2://")
+        return url
 
     # Server
     HOST: str = "0.0.0.0"

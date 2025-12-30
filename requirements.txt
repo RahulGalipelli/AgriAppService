@@ -1,13 +1,12 @@
-dotenv
+python-dotenv
 fastapi
-uvicorn
+uvicorn[standard]
 pydantic
-pydantic_settings
+pydantic-settings
 python-multipart
 openai
 imagehash
 Pillow
-pillow
 twilio
 sqlalchemy
 asyncpg

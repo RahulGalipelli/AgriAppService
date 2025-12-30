@@ -66,6 +66,60 @@ class RefreshTokenRequest(BaseModel):
 
 # --- OTP / AUTH ROUTES ---
 
+@app.post("/auth/admin-login")
+async def admin_login(request: MobileNumberRequest):
+    """
+    Admin login endpoint - bypasses OTP for admin users
+    Only works for predefined admin phone numbers
+    """
+    mobile = request.mobileNumber
+    
+    # Admin phone numbers (should be in environment variables in production)
+    ADMIN_PHONES = ["9999999999", "8888888888"]  # Replace with actual admin numbers
+    
+    if mobile not in ADMIN_PHONES:
+        raise HTTPException(status_code=403, detail="Not an admin user")
+    
+    async with async_session() as session:
+        # Upsert user
+        result = await session.execute(select(User).where(User.phone == mobile))
+        user: User | None = result.scalar_one_or_none()
+
+        if not user:
+            user = User(phone=mobile, name="Admin")
+            session.add(user)
+            await session.commit()
+            await session.refresh(user)
+        elif not user.is_active:
+            user.is_active = True
+            await session.commit()
+
+        # Create refresh token
+        refresh_token = str(uuid4())
+        expires_at = datetime.utcnow() + timedelta(days=7)
+        user_session = UserSession(
+            user_id=user.id,
+            token=refresh_token,
+            expires_at=expires_at
+        )
+        session.add(user_session)
+        await session.commit()
+
+        # Generate access token
+        access_token = create_access_token(subject=user.id)
+
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "user": {
+            "id": str(user.id),
+            "phone": user.phone,
+            "name": user.name,
+            "language": user.language
+        }
+    }
+
 @app.post("/auth/request-otp")
 async def request_otp(request: MobileNumberRequest):
     mobile = request.mobileNumber
