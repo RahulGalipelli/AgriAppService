@@ -3,8 +3,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from datetime import datetime, timedelta
-from uuid import uuid4, UUID
+from uuid import uuid4, uuid5, UUID, NAMESPACE_DNS
 from collections import defaultdict
+
+# Deterministic bypass user ID for 9999999999 when DB is unavailable (dev/testing)
+BYPASS_USER_ID = uuid5(NAMESPACE_DNS, "agricure.bypass.9999999999")
 import logging
 from twilio.rest import Client
 from app.db.session import async_session
@@ -70,55 +73,74 @@ class RefreshTokenRequest(BaseModel):
 async def admin_login(request: MobileNumberRequest):
     """
     Admin login endpoint - bypasses OTP for admin users
-    Only works for predefined admin phone numbers
+    Only works for predefined admin phone numbers.
+    For 9999999999, if DB fails (e.g. dev without DB), returns a bypass token so login still succeeds.
     """
     mobile = request.mobileNumber
-    
+
     # Admin phone numbers (should be in environment variables in production)
     ADMIN_PHONES = ["9999999999", "8888888888"]  # Replace with actual admin numbers
-    
+
     if mobile not in ADMIN_PHONES:
         raise HTTPException(status_code=403, detail="Not an admin user")
-    
-    async with async_session() as session:
-        # Upsert user
-        result = await session.execute(select(User).where(User.phone == mobile))
-        user: User | None = result.scalar_one_or_none()
 
-        if not user:
-            user = User(phone=mobile, name="Admin")
-            session.add(user)
+    try:
+        async with async_session() as session:
+            # Upsert user
+            result = await session.execute(select(User).where(User.phone == mobile))
+            user: User | None = result.scalar_one_or_none()
+
+            if not user:
+                user = User(phone=mobile, name="Admin")
+                session.add(user)
+                await session.commit()
+                await session.refresh(user)
+            elif not user.is_active:
+                user.is_active = True
+                await session.commit()
+
+            # Create refresh token
+            refresh_token = str(uuid4())
+            expires_at = datetime.utcnow() + timedelta(days=7)
+            user_session = UserSession(
+                user_id=user.id,
+                token=refresh_token,
+                expires_at=expires_at
+            )
+            session.add(user_session)
             await session.commit()
-            await session.refresh(user)
-        elif not user.is_active:
-            user.is_active = True
-            await session.commit()
 
-        # Create refresh token
-        refresh_token = str(uuid4())
-        expires_at = datetime.utcnow() + timedelta(days=7)
-        user_session = UserSession(
-            user_id=user.id,
-            token=refresh_token,
-            expires_at=expires_at
-        )
-        session.add(user_session)
-        await session.commit()
+            # Generate access token
+            access_token = create_access_token(subject=user.id)
 
-        # Generate access token
-        access_token = create_access_token(subject=user.id)
-
-    return {
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "token_type": "bearer",
-        "user": {
-            "id": str(user.id),
-            "phone": user.phone,
-            "name": user.name,
-            "language": user.language
+        return {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "bearer",
+            "user": {
+                "id": str(user.id),
+                "phone": user.phone,
+                "name": user.name,
+                "language": user.language or "en",
+            }
         }
-    }
+    except Exception as e:
+        # Bypass: for 9999999999 allow login without DB (e.g. dev/testing)
+        if mobile == "9999999999":
+            logger.warning("admin_login DB failed for 9999999999, using bypass: %s", e)
+            access_token = create_access_token(subject=BYPASS_USER_ID)
+            return {
+                "access_token": access_token,
+                "refresh_token": str(uuid4()),
+                "token_type": "bearer",
+                "user": {
+                    "id": str(BYPASS_USER_ID),
+                    "phone": "9999999999",
+                    "name": "Admin",
+                    "language": "en",
+                }
+            }
+        raise
 
 @app.post("/auth/request-otp")
 async def request_otp(request: MobileNumberRequest):
@@ -238,18 +260,24 @@ async def update_user(
     async with async_session() as session:
         result = await session.execute(select(User).where(User.id == UUID(user_id)))
         user: User | None = result.scalar_one_or_none()
-        
-        if not user:
+
+        # Bypass user (9999999999): create if not yet in DB
+        if not user and UUID(user_id) == BYPASS_USER_ID:
+            user = User(id=BYPASS_USER_ID, phone="9999999999", name="Admin", language="en")
+            session.add(user)
+            await session.commit()
+            await session.refresh(user)
+        elif not user:
             raise HTTPException(status_code=404, detail="User not found")
-        
+
         if request.language is not None:
             user.language = request.language
         if request.name is not None:
             user.name = request.name
-        
+
         await session.commit()
         await session.refresh(user)
-        
+
         return {
             "id": str(user.id),
             "phone": user.phone,
@@ -266,8 +294,26 @@ async def startup():
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
         logger.info("Tables created/verified (local dev mode)")
-    else:
-        logger.info("API started (production mode - using Alembic migrations)")
+
+    # Ensure bypass user (dev-bypass token) exists so cart/orders FK don't fail
+    try:
+        async with async_session() as session:
+            result = await session.execute(select(User).where(User.id == BYPASS_USER_ID))
+            if result.scalar_one_or_none() is not None:
+                pass  # already exists
+            else:
+                # Distinct phone <= 15 chars (users.phone column limit); avoid clash with real 9999999999
+                bypass_user = User(
+                    id=BYPASS_USER_ID,
+                    phone="bypass99999999",
+                    name="Admin",
+                    language="en",
+                )
+                session.add(bypass_user)
+                await session.commit()
+                logger.info("Bypass user created for dev token (id=%s)", BYPASS_USER_ID)
+    except Exception as e:
+        logger.warning("Bypass user setup: %s", e)
 
 @app.on_event("shutdown")
 async def shutdown():

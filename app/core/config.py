@@ -11,11 +11,11 @@ class Settings(BaseSettings):
 
     # Database - Support both DATABASE_URL (cloud) and individual vars (local)
     DATABASE_URL: Optional[str] = None  # Cloud providers use this
-    POSTGRES_USER: Optional[str] = None
-    POSTGRES_PASSWORD: Optional[str] = None
+    POSTGRES_USER: str = "postgres"
+    POSTGRES_PASSWORD: str = "postgres"
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
-    POSTGRES_DB: Optional[str] = None
+    POSTGRES_DB: str = "agricure"
 
     @property
     def database_url(self) -> str:
@@ -25,11 +25,8 @@ class Settings(BaseSettings):
             if "postgresql://" in self.DATABASE_URL and "+asyncpg" not in self.DATABASE_URL:
                 return self.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
             return self.DATABASE_URL
-        
+
         # Otherwise, build from individual vars (local development)
-        if not all([self.POSTGRES_USER, self.POSTGRES_PASSWORD, self.POSTGRES_DB]):
-            raise ValueError("Either DATABASE_URL or all POSTGRES_* variables must be set")
-        
         return (
             f"postgresql+asyncpg://{self.POSTGRES_USER}:"
             f"{self.POSTGRES_PASSWORD}@"
